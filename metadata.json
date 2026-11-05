@@ -1,0 +1,6 @@
+{
+  "name": "TaskFlow - Team Task Board",
+  "description": "A full-featured Trello-style team task board with boards, drag-and-drop columns, task assignments, backend filters, MongoDB aggregation stats, activity logs, and JWT authentication.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

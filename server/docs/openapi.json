@@ -1,0 +1,399 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Team Task Board REST API",
+    "version": "1.0.0",
+    "description": "Production-grade Express REST API for Trello-style Task Board with JWT Authentication, MongoDB/Mongoose data models, Drag-and-Drop Column/Task reordering, Backend Filtering, and Aggregation Pipeline Stats."
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "TaskFlow API Base URL"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "summary": "Register a new team member",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email", "password"],
+                "properties": {
+                  "name": { "type": "string", "example": "Alex Rivera" },
+                  "email": { "type": "string", "format": "email", "example": "alex@team.dev" },
+                  "password": { "type": "string", "minLength": 6, "example": "password123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "User created with JWT token" },
+          "400": { "description": "Validation error" },
+          "409": { "description": "User already exists" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Log in with email and bcrypt-hashed password",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "example": "alex@team.dev" },
+                  "password": { "type": "string", "example": "password123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Login successful, returns JWT token" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Get current authenticated user profile",
+        "responses": {
+          "200": { "description": "User profile" },
+          "401": { "description": "Unauthorized / Expired token" }
+        }
+      }
+    },
+    "/boards": {
+      "get": {
+        "summary": "List all boards where user is member or owner",
+        "responses": {
+          "200": { "description": "Array of boards with owner and members" }
+        }
+      },
+      "post": {
+        "summary": "Create a new board (auto-creates default columns)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["title"],
+                "properties": {
+                  "title": { "type": "string", "example": "Sprint 15 Board" },
+                  "description": { "type": "string", "example": "Delivery board for team" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created board with columns" }
+        }
+      }
+    },
+    "/boards/{id}": {
+      "get": {
+        "summary": "Get full board with columns and tasks",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Board, columns, and tasks" },
+          "403": { "description": "Not a board member" },
+          "404": { "description": "Board not found" }
+        }
+      },
+      "patch": {
+        "summary": "Rename or edit board description",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated board" }
+        }
+      },
+      "delete": {
+        "summary": "Delete board and cascade delete its columns and tasks (Owner only)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Board deleted" },
+          "403": { "description": "Only owner can delete" }
+        }
+      }
+    },
+    "/boards/{id}/invite": {
+      "post": {
+        "summary": "Invite an existing user to the board by email",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": { "type": "string", "example": "sunidhi@team.dev" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Member added to board" },
+          "404": { "description": "User not found" }
+        }
+      }
+    },
+    "/boards/{id}/stats": {
+      "get": {
+        "summary": "Get board statistics computed via MongoDB Aggregation Pipeline ($match, $group, $lookup, $project)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task counts by column, assignee metrics, and overdue counts"
+          }
+        }
+      }
+    },
+    "/columns": {
+      "post": {
+        "summary": "Add a new column to a board",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["boardId", "title"],
+                "properties": {
+                  "boardId": { "type": "string" },
+                  "title": { "type": "string", "example": "QA Testing" },
+                  "color": { "type": "string", "example": "#E11D48" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created column" }
+        }
+      }
+    },
+    "/columns/reorder": {
+      "patch": {
+        "summary": "Reorder columns on a board",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["boardId", "orderedColumnIds"],
+                "properties": {
+                  "boardId": { "type": "string" },
+                  "orderedColumnIds": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Reordered columns" }
+        }
+      }
+    },
+    "/columns/{id}": {
+      "patch": {
+        "summary": "Rename or update column color",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "color": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated column" }
+        }
+      },
+      "delete": {
+        "summary": "Delete column and its tasks",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Column deleted" }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "summary": "List tasks with backend filtering",
+        "parameters": [
+          { "name": "boardId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "assigneeId", "in": "query", "schema": { "type": "string" } },
+          { "name": "priority", "in": "query", "schema": { "type": "string", "enum": ["Low", "Medium", "High"] } },
+          { "name": "label", "in": "query", "schema": { "type": "string" } },
+          { "name": "overdue", "in": "query", "schema": { "type": "string", "enum": ["true", "false"] } },
+          { "name": "search", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Filtered tasks" }
+        }
+      },
+      "post": {
+        "summary": "Create a new task with initial activity log",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["boardId", "columnId", "title"],
+                "properties": {
+                  "boardId": { "type": "string" },
+                  "columnId": { "type": "string" },
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "assigneeId": { "type": "string", "nullable": true },
+                  "priority": { "type": "string", "enum": ["Low", "Medium", "High"] },
+                  "dueDate": { "type": "string", "format": "date" },
+                  "labels": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Created task" }
+        }
+      }
+    },
+    "/tasks/{id}": {
+      "get": {
+        "summary": "Get single task with full activity log",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Task details" }
+        }
+      },
+      "patch": {
+        "summary": "Update task details (appends activity log)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": { "type": "string" },
+                  "description": { "type": "string" },
+                  "assigneeId": { "type": "string", "nullable": true },
+                  "priority": { "type": "string", "enum": ["Low", "Medium", "High"] },
+                  "dueDate": { "type": "string" },
+                  "labels": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Updated task" }
+        }
+      },
+      "delete": {
+        "summary": "Delete task",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Task deleted" }
+        }
+      }
+    },
+    "/tasks/{id}/move": {
+      "patch": {
+        "summary": "Drag-and-drop: move task to another column and reorder (persisted across reloads)",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["targetColumnId", "newOrder"],
+                "properties": {
+                  "targetColumnId": { "type": "string" },
+                  "newOrder": { "type": "number", "minimum": 0 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Task moved and reordered" }
+        }
+      }
+    }
+  }
+}
